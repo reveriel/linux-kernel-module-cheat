@@ -112,6 +112,7 @@ f="${data_dir}/cli"
 if [ -f "$f" ]; then
   . "$f"
 fi
+. "${root_dir}/cli"
 # Default arch.
 arch=x86_64
 gem5=false

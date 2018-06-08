@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+# When editing this file, it is better to append to the variables,
+# so that both data/cli and cli can be considered together.
+#
+# This is a simple setup for gem5 specific builds with a checked out
+# Linux kernel and custom gem5 configs.
+
+#arch=aarch64
+#case "$arch" in
+#  arm)
+#    linux_kernel_custom_config_file="${root_dir}/linux/arch/arm/configs/gem5_defconfig"
+#    ;;
+#  aarch64)
+#    linux_kernel_custom_config_file="${root_dir}/linux/arch/arm64/configs/gem5_defconfig"
+#    ;;
+#esac
+#linux='-L dp'
+#cli_build="${cli_build:-} -K ${linux_kernel_custom_config_file} -c ${root_dir}/kernel_config_fragment/display ${linux}"
+#cli_run="${cli_run:-} ${linux}"

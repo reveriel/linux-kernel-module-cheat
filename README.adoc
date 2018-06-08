@@ -857,7 +857,7 @@ as explained at: https://buildroot.org/downloads/manual/manual.html#rebuild-pkg
 The clean is necessary because the source files didn't change, so `make` would just check the timestamps and not build anything.
 
 [[retype]]
-=== Don't retype arguments all the time
+=== Default arguments
 
 It gets annoying to retype `-a aarch64` for every single command, or to remember `./build -B` setups.
 
@@ -867,7 +867,13 @@ So simplify that, do:
 cp cli.example data/cli
 ....
 
-and then edit the `data/cli` file to your needs.
+and then edit the gitignored `data/cli` file to your needs.
+
+Alternatively, if you are dealing with multiple branches, you can also use the git tracked:
+
+....
+cli
+....
 
 That file is used to pass extra command line arguments to most of our utilities.
 
@@ -7033,8 +7039,13 @@ The action seems to be happening at: `hw/arm/virt.c`.
 
 === Directory structure
 
-* `/data`: gitignored user created data. Deleting this might lead to loss of data. Of course, if something there becomes is important enough to you, git track it.
-* `/out`: gitignored Build outputs. You won't lose data by deleting this folder since everything there can be re-generated, only time.
+* `data`: gitignored user created data. Deleting this might lead to loss of data. Of course, if something there becomes is important enough to you, git track it.
+* `out`: gitignored Build outputs. You won't lose data by deleting this folder since everything there can be re-generated, only time.
+* `out/<arch>`: arch specific outputs
+* `out/<arch>/buildroot`: Buildroot output
+* `out/<arch>/qemu`: QEMU runtime outputs
+* `out/<arch>/gem5`: GEM5 runtime outputs
+* `out/common`: cross arch outputs. Notably gem5, which has the same build for `arm` and `aarch64`.
 
 :leveloffset: +3
 
