@@ -14,10 +14,16 @@
 # https://unix.stackexchange.com/questions/338578/linux-kernel-source-code-size-difference
 [submodule "submodules/linux"]
 	path = submodules/linux
-	url = https://github.com/cirosantilli/linux
+	url = https://mirrors.tuna.tsinghua.edu.cn/git/linux.git
+	#url = https://github.com/reveriel/linux
+	#url = https://github.com/cirosantilli/linux
 [submodule "submodules/parsec-benchmark"]
 	path = submodules/parsec-benchmark
 	url = https://github.com/cirosantilli/parsec-benchmark
 [submodule "submodules/qemu"]
 	path = submodules/qemu
 	url = https://github.com/cirosantilli/qemu
+
+[submodule "userland/ksm-test"]
+	path = userland/ksm-test
+	url = git@github:reveriel/ksm-test
