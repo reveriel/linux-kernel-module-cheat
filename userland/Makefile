@@ -1,7 +1,7 @@
 .PHONY: all clean mkdir
 
 CFLAGS = -fopenmp -std=c99 $(CCFLAGS) $(CFLAGS_EXTRA)
-CXXFLAGS = -std=c++17 $(CCFLAGS) $(CXXFLAGS_EXTRA)
+CXXFLAGS = $(CCFLAGS) $(CXXFLAGS_EXTRA)
 # -Wno-unused-function for function definitions on headers,
 #  because we are lazy to make a shared object. TODO.
 CCFLAGS = -ggdb3 -O0 -Wall -Werror -Wextra -Wno-unused-function $(CCFLAGS_EXTRA)
@@ -34,9 +34,20 @@ ifeq ($(HAS_OPENBLAS),y)
 else
 	OUTS := $(filter-out openblas_%$(OUT_EXT),$(OUTS))
 endif
+OUTS := $(filter-out bst_vs_heap%$(OUT_EXT),$(OUTS))
+
+OUTS += test_one.out ksmtrace.out
+
+
 OUTS := $(addprefix $(OUT_DIR)/,$(OUTS))
 
 all: mkdir $(OUTS)
+
+$(OUT_DIR)/ksmtrace.out: ksm-test/ksmtrace.c
+	$(CC) $(CFLAGS) -o $@ $< -I./ksm-test
+
+$(OUT_DIR)/test_one.out: ksm-test/test_one.c ksm-test/bk.c
+	$(CC) $(CFLAGS) -o $@ ksm-test/test_one.c ksm-test/bk.c  -I./ksm-test
 
 $(OUT_DIR)/%$(OUT_EXT): %$(IN_EXT_C)
 	$(CC) $(CFLAGS) -o '$@' '$<' $(LIBS)
