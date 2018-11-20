@@ -9,6 +9,9 @@ else
 # was to let the host select obj-m itself.
 obj-m += $(OBJECT_FILES)
 endif
+
+obj-m = $(filter-out mmap.o, $(ojb-m)) # failed
+
 ccflags-y := -DDEBUG -g -std=gnu99 -Werror -Wno-declaration-after-statement -Wframe-larger-than=1000000000
 
 .PHONY: all
