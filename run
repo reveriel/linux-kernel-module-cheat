@@ -333,7 +333,7 @@ def main(args, extra_args=None):
                 ])
                 virtio_gpu_pci = []
             else:
-                virtio_gpu_pci = ['-device', 'virtio-gpu-pci']
+                virtio_gpu_pci = ['-device', 'virtio-gpu-pci', common.Newline]
             if args.arch == 'x86_64':
                 append = ['-append', '{} nopat {}'.format(root, kernel_cli), common.Newline]
                 cmd.extend([
@@ -346,7 +346,7 @@ def main(args, extra_args=None):
                     cpu = 'cortex-a15'
                 else:
                     cpu = 'cortex-a57'
-                append = ['-append', '{} {}'.format(root, kernel_cli)]
+                append = ['-append', '{} {}'.format(root, kernel_cli), common.Newline]
                 cmd.extend(
                     [
                         # highmem=off needed since v3.0.0 due to:
@@ -399,12 +399,13 @@ def main(args, extra_args=None):
             for line in logfile:
                 if panic_re.search(line):
                     error_string_found = True
-        with open(common.guest_terminal_file, 'br') as logfile:
-            lines = logfile.readlines()
-            if lines:
-                last_line = lines[-1]
-                if last_line.rstrip() == common.magic_fail_string:
-                    error_string_found = True
+        if os.path.exists(common.guest_terminal_file):
+            with open(common.guest_terminal_file, 'br') as logfile:
+                lines = logfile.readlines()
+                if lines:
+                    last_line = lines[-1]
+                    if last_line.rstrip() == common.magic_fail_string:
+                        error_string_found = True
         if error_string_found:
             common.log_error('simulation error detected by parsing logs')
             return 1
@@ -574,7 +575,7 @@ Path resolution is similar to --baremetal.
     parser.add_argument(
         '--userland-before', default=defaults['userland_before'],
         help='''\
-Pass these Krguments to the QEMU user mode CLI before the program to execute.
+Pass these arguments to the QEMU user mode CLI before the program to execute.
 This is required with --userland since arguments that come at the end are interpreted
 as command line arguments to that executable.
 '''

@@ -87,11 +87,11 @@ All available modules can be found in the link:kernel_modules[] directory.
 It is super easy to build for different CPU architectures, just use the `--arch` option:
 
 ....
-./build --arch aarch64
+./build --arch aarch64 --download-dependencies qemu-buildroot
 ./run --arch aarch64
 ....
 
-To avoid typing `--arch aarch64` so many times, set the default arch as explained at: <<default-command-line-arguments>>
+To avoid typing `--arch aarch64` many times, you set the default arch as explained at: <<default-command-line-arguments>>
 
 See also: <<cpu-architecture,CPU architectures>>.
 
@@ -221,11 +221,11 @@ and the new `pr_info` message should now show on the terminal at the end of the 
 
 This works because we have a <<9p>> mount there setup by default, which makes a host directory available on the guest.
 
-The fast is slightly risky because your kernel module might have corrupted the kernel memory, which could affect future runs.
+The fast method is slightly risky because your kernel module might have corrupted the kernel memory, which could affect future runs.
 
 Such failures are however unlikely, and you should be fine if you don't see anything weird happening.
 
-The safe way, is to fist quit QEMU, then rebuild the modules, put them in the root filesystem, and then reboot:
+The safe way, is to fist quit QEMU, rebuild the modules, put them in the root filesystem, and then reboot:
 
 ....
 ./build-modules
@@ -310,7 +310,11 @@ Read the following sections for further introductory material:
 
 This setup is like the <<qemu-buildroot-setup>>, but it uses link:http://gem5.org/[gem5] instead of QEMU as a system simulator.
 
-QEMU tries to run as fast as possible and give correct results at the end, but it does not tell us how many CPU cycles it takes to do something, just the number of instructions it ran, and this cannot be used to estimate system performance. This is known as a functional simulation.
+QEMU tries to run as fast as possible and give correct results at the end, but it does not tell us how many CPU cycles it takes to do something, just the number of instructions it ran.
+
+The number of instructions executed is a very poor estimator of performance because in modern computers, a lot of time is spent waiting for memory requests rather than the instructions themselves.
+
+This kind of simulation is known as functional simulation.
 
 gem5 on the other hand, can simulate the system in more detail than QEMU, including:
 
@@ -351,13 +355,13 @@ You can quit the shell without killing gem5 by typing tilde followed by a period
 ~.
 ....
 
-If you are inside <<tmux>>, which I highly recommend, just run gem5 with:
+If you are inside <<tmux>>, which I highly recommend, you can both run gem5 stdout and open the guest terminal on a split window with:
 
 ....
 ./run --gem5 --tmux
 ....
 
-This will open up a split terminal by default so that you can see both the gem5 stdout and the terminal. See also: <<tmux-gem5>>.
+See also: <<tmux-gem5>>.
 
 At the end of boot, it might not be very clear that you have the shell since some <<printk>> messages may appear in front of the prompt like this:
 
@@ -394,7 +398,7 @@ For example, to do a <<qemu-buildroot-setup>> inside Docker, run:
 ....
 sudo apt-get install docker
 ./run-docker create && \
-./run-docker sh -- ./build --download-dependencies
+./run-docker sh -- ./build --download-dependencies qemu-buildroot
 ./run-docker sh
 ....
 
@@ -501,14 +505,14 @@ The limitations are severe however:
 * can't <<gdb,GDB step debug the kernel>>, since the source and cross toolchain with GDB are not available. Buildroot cannot easily use a host toolchain: <<prebuilt-toolchain>>.
 +
 Maybe we could work around this by just downloading the kernel source somehow, and using a host prebuilt GDB, but we felt that it would be too messy and unreliable.
-* you won't get the latest version of this repository. Our <<travis>> attempt to automate builds failed, and storing a release for every commit would likely make GitHub mad at us.
+* you won't get the latest version of this repository. Our <<travis>> attempt to automate builds failed, and storing a release for every commit would likely make GitHub mad at us anyways.
 * <<gem5>> is not currently supported, although it should not be too hard to do. Annoyances:
 +
 ** there is no Debian package for it, so you have to compile your own, so you might as well just build the image itself
 ** it does not handle <<gem5-qcow2,qcow2>>, and we haven't gotten <<squashfs>> to work yet, therefore we would have to either distribute large ext2 images, or constantly fight with <<br2_target_rootfs_ext2_size>>
 ** QEMU uses `bzImage` and gem5 the raw `vmlinux`, and we don't want to distribute the same thing twice...
 +
-And our attempt at using link:https://github.com/torvalds/linux/blob/master/scripts/extract-vmlinux[`extract-vmlinux`] failed for `aarch64` with:
+Our attempt at using link:https://github.com/torvalds/linux/blob/master/scripts/extract-vmlinux[`extract-vmlinux`] to convert between them failed for `aarch64` with:
 +
 ....
 run-detectors: unable to find an interpreter for
@@ -2820,7 +2824,9 @@ gem5 can generate DTBs on ARM with `--generate-dtb`, but we don't use that featu
 
 == KVM
 
-You can make QEMU or gem5 <<benchmark-linux-kernel-boot,run faster>> by passing enabling KVM with:
+link:https://en.wikipedia.org/wiki/Kernel-based_Virtual_Machine[KVM] is Linux kernel interface that <<benchmark-linux-kernel-boot,greatly speeds up>> execution of virtual machines.
+
+You can make QEMU or gem5  by passing enabling KVM with:
 
 ....
 ./run --kvm
@@ -2832,21 +2838,19 @@ but it was broken in gem5 with pending patches: https://www.mail-archive.com/gem
 panic: KVM: Failed to enter virtualized mode (hw reason: 0x80000021)
 ....
 
-KVM uses the link:https://en.wikipedia.org/wiki/Kernel-based_Virtual_Machine[KVM Linux kernel feature] of the host to run most instructions natively.
+KVM works by running userland instructions natively directly on the real hardware instead of running a software simulation of those instructions.
+
+Therefore, KVM only works if you the host architecture is the same as the guest architecture. This means that this will likely only work for x86 guests since almost all development machines are x86 nowadays. Unless you are link:https://www.youtube.com/watch?v=8ItXpmLsINs[running an ARM desktop for some weird reason] :-)
 
 We don't enable KVM by default because:
 
-* only works if the architecture of the guest equals that of the host.
-+
-We have only tested / supported it on x86, but it is rumoured that QEMU and gem5 also have ARM KVM support if you are link:https://www.youtube.com/watch?v=8ItXpmLsINs[running an ARM desktop for some weird reason] :-)
-* limits visibility, since more things are running natively:
+* it limits visibility, since more things are running natively:
 ** can't use GDB
 ** can't do instruction tracing
-* kernel boots are already fast enough without `-enable-kvm`
+** on gem5, you lose cycle counts and therefor any notion of performance
+* QEMU kernel boots are already fast enough for most purposes without it
 
-The main use case for `-enable-kvm` in this repository is to test if something that takes a long time to run is functionally correct.
-
-For example, when porting a benchmark to Buildroot, you can first use QEMU's KVM to test that benchmarks is producing the correct results, before analysing them more deeply in gem5, which runs much slower.
+One important use case for KVM is to fast forward gem5 execution, often to skip boot, take a <<gem5-checkpoint>>, and then move on to a more detailed and slow simulation
 
 == User mode simulation
 
@@ -4127,6 +4131,15 @@ We don't expect those changes to be very difficult. A good way to approach the t
 * build the Buildroot documentation for the version you are going to use, and check if all Buildroot build commands make sense there
 
 Then, if you spot an option that is wrong, some grepping in this repo should quickly point you to the code you need to modify.
+
+It also possible that you will need to apply some patches from newer Buildroot versions for it to build, due to incompatibilities with the host Ubuntu packages and that Buildroot version. Just read the error message, and try:
+
+* `git log master -- packages/<pkg>`
+* Google the error message for mailing list hits
+
+Successful port reports:
+
+* v3.18: https://github.com/cirosantilli/linux-kernel-module-cheat/issues/39#issuecomment-438525481
 
 === Kernel command line parameters
 
@@ -10382,6 +10395,78 @@ help architecture
 ....
 
 shows ARM version up to `armv6`, so maybe `armv6` is not implemented?
+
+=== ARM exception level
+
+ARM exception levels are analogous to x86 <<ring0,rings>>.
+
+Print the EL at the beginning of a baremetal simulation:
+
+....
+./run --arch arm --baremetal arch/arm/el
+./run --arch aarch64 --baremetal arch/aarch64/el
+....
+
+Sources:
+
+* link:baremetal/arch/arm/el.c[]
+* link:baremetal/arch/aarch64/el.c[]
+
+The instructions that find the ARM EL are explained at: https://stackoverflow.com/questions/31787617/what-is-the-current-execution-mode-exception-level-etc
+
+The lower ELs are not mandated by the architecture, and can be controlled through command line options in QEMU and gem5.
+
+In QEMU, you can configure the lowest EL as explained at https://stackoverflow.com/questions/42824706/qemu-system-aarch64-entering-el1-when-emulating-a53-power-up
+
+....
+./run --arch arm --baremetal arch/arm/el
+./run --arch arm --baremetal arch/arm/el -- -machine virtualization=on
+./run --arch arm --baremetal arch/arm/el -- -machine secure=on
+./run --arch aarch64 --baremetal arch/aarch64/el
+./run --arch aarch64 --baremetal arch/aarch64/el -- -machine virtualization=on
+./run --arch aarch64 --baremetal arch/aarch64/el -- -machine secure=on
+....
+
+outputs respectively:
+
+....
+19
+19
+19
+1
+2
+3
+....
+
+TODO: why is `arm` stuck at `19` which equals Supervisor mode?
+
+In gem5, you can configure the lowest EL with:
+
+....
+./run --arch arm --baremetal arch/arm/el --gem5
+cat "$(./getvar --arch arm --gem5 gem5_guest_terminal_file)"
+./run --arch arm --baremetal arch/arm/el --gem5 -- --param 'system.have_virtualization = True'
+cat "$(./getvar --arch arm --gem5 gem5_guest_terminal_file)"
+./run --arch arm --baremetal arch/arm/el --gem5 -- --param 'system.have_security = True'
+cat "$(./getvar --arch arm --gem5 gem5_guest_terminal_file)"
+./run --arch aarch64 --baremetal arch/aarch64/el --gem5
+cat "$(./getvar --arch aarch64 --gem5 gem5_guest_terminal_file)"
+./run --arch aarch64 --baremetal arch/aarch64/el --gem5 -- --param 'system.have_virtualization = True'
+cat "$(./getvar --arch aarch64 --gem5 gem5_guest_terminal_file)"
+./run --arch aarch64 --baremetal arch/aarch64/el --gem5 -- --param 'system.have_security = True'
+cat "$(./getvar --arch aarch64 --gem5 gem5_guest_terminal_file)"
+....
+
+output:
+
+....
+19
+26
+19
+1
+2
+3
+....
 
 === How we got some baremetal stuff to work
 
