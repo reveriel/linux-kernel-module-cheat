@@ -193,6 +193,39 @@ def write_string_to_file(path, string, mode='w'):
         with open(path, 'a') as f:
             f.write(string)
 
+def cmd_to_string(cmd, cwd=None, extra_env=None, extra_paths=None):
+    '''
+    Format a command given as a list of strings so that it can
+    be viewed nicely and executed by bash directly and print it to stdout.
+    '''
+    last_newline = ' \\\n'
+    newline_separator = last_newline + '  '
+    out = []
+    if extra_env is None:
+        extra_env = {}
+    if cwd is not None:
+        out.append('cd {} &&'.format(shlex.quote(cwd)))
+    if extra_paths is not None:
+        out.append('PATH="{}:${{PATH}}"'.format(':'.join(extra_paths)))
+    for key in extra_env:
+        out.append('{}={}'.format(shlex.quote(key), shlex.quote(extra_env[key])))
+    cmd_quote = []
+    newline_count = 0
+    for arg in cmd:
+        if arg == common.Newline:
+            cmd_quote.append(arg)
+            newline_count += 1
+        else:
+            cmd_quote.append(shlex.quote(arg))
+    if newline_count > 0:
+        cmd_quote = [' '.join(list(y)) for x, y in itertools.groupby(cmd_quote, lambda z: z == common.Newline) if not x]
+    out.extend(cmd_quote)
+    if newline_count == 1 and cmd[-1] == common.Newline:
+        ending = ''
+    else:
+        ending = last_newline + ';'
+    return newline_separator.join(out) + ending
+
 def copy_dir_if_update_non_recursive(srcdir, destdir, filter_ext=None):
     # TODO print rsync equivalent.
     os.makedirs(destdir, exist_ok=True)
@@ -206,6 +239,11 @@ def copy_dir_if_update_non_recursive(srcdir, destdir, filter_ext=None):
                     os.path.join(destdir, basename),
                     update=1,
                 )
+
+def cp(src, dest):
+    print_cmd(['cp', src, dest])
+    if not common.dry_run:
+        shutil.copy2(src, dest)
 
 def gem_list_checkpoint_dirs():
     '''
@@ -475,38 +513,13 @@ def make_run_dirs():
     os.makedirs(common.p9_dir, exist_ok=True)
     os.makedirs(common.qemu_run_dir, exist_ok=True)
 
-def cmd_to_string(cmd, cwd=None, extra_env=None, extra_paths=None):
-    '''
-    Format a command given as a list of strings so that it can
-    be viewed nicely and executed by bash directly and print it to stdout.
-    '''
-    last_newline = ' \\\n'
-    newline_separator = last_newline + '  '
-    out = []
-    if extra_env is None:
-        extra_env = {}
-    if cwd is not None:
-        out.append('cd {} &&'.format(shlex.quote(cwd)))
-    if extra_paths is not None:
-        out.append('PATH="{}:${{PATH}}"'.format(':'.join(extra_paths)))
-    for key in extra_env:
-        out.append('{}={}'.format(shlex.quote(key), shlex.quote(extra_env[key])))
-    cmd_quote = []
-    newline_count = 0
-    for arg in cmd:
-        if arg == common.Newline:
-            cmd_quote.append(arg)
-            newline_count += 1
-        else:
-            cmd_quote.append(shlex.quote(arg))
-    if newline_count > 0:
-        cmd_quote = [' '.join(list(y)) for x, y in itertools.groupby(cmd_quote, lambda z: z == common.Newline) if not x]
-    out.extend(cmd_quote)
-    if newline_count == 1 and cmd[-1] == common.Newline:
-        ending = ''
-    else:
-        ending = last_newline + ';'
-    return newline_separator.join(out) + ending
+def need_rebuild(srcs, dst):
+    if not os.path.exists(dst):
+        return True
+    for src in srcs:
+        if os.path.getmtime(src) > os.path.getmtime(dst):
+            return True
+    return False
 
 def print_cmd(cmd, cwd=None, cmd_file=None, extra_env=None, extra_paths=None):
     '''
@@ -537,7 +550,7 @@ def print_time(ellapsed_seconds):
     print("time {:02}:{:02}:{:02}".format(int(hours), int(minutes), int(seconds)))
 
 def raw_to_qcow2(prebuilt=False, reverse=False):
-    if prebuilt:
+    if prebuilt or not os.path.exists(common.qemu_img_executable):
         disable_trace = []
         qemu_img_executable = common.qemu_img_basename
     else:
@@ -558,10 +571,10 @@ def raw_to_qcow2(prebuilt=False, reverse=False):
     common.run_cmd(
         [
             qemu_img_executable, common.Newline,
-            'convert', common.Newline,
         ] +
         disable_trace +
         [
+            'convert', common.Newline,
             '-f', infmt, common.Newline,
             '-O', outfmt, common.Newline,
             infile, common.Newline,
@@ -575,11 +588,6 @@ def resolve_args(defaults, args, extra_args):
     argcopy = copy.copy(args)
     argcopy.__dict__ = dict(list(defaults.items()) + list(argcopy.__dict__.items()) + list(extra_args.items()))
     return argcopy
-
-def cp(src, dest):
-    print_cmd(['cp', src, dest])
-    if not common.dry_run:
-        shutil.copy2(src, dest)
 
 def rmrf(path):
     print_cmd(['rm', '-r', '-f', path])
@@ -786,7 +794,7 @@ def setup(parser):
     common.gem5_run_dir = os.path.join(common.run_dir_base, 'gem5', args.arch, str(args.run_id))
     common.m5out_dir = os.path.join(common.gem5_run_dir, 'm5out')
     common.stats_file = os.path.join(common.m5out_dir, 'stats.txt')
-    common.trace_txt_file = os.path.join(common.m5out_dir, 'trace.txt')
+    common.gem5_trace_txt_file = os.path.join(common.m5out_dir, 'trace.txt')
     common.gem5_guest_terminal_file = os.path.join(common.m5out_dir, 'system.terminal')
     common.gem5_readfile = os.path.join(common.gem5_run_dir, 'readfile')
     common.gem5_termout_file = os.path.join(common.gem5_run_dir, 'termout.txt')
@@ -833,11 +841,13 @@ def setup(parser):
         common.run_dir = common.gem5_run_dir
         common.termout_file = common.gem5_termout_file
         common.guest_terminal_file = gem5_guest_terminal_file
+        common.trace_txt_file = gem5_trace_txt_file
     else:
         common.executable = common.qemu_executable
         common.run_dir = common.qemu_run_dir
         common.termout_file = common.qemu_termout_file
         common.guest_terminal_file = qemu_guest_terminal_file
+        common.trace_txt_file = qemu_trace_txt_file
     common.gem5_config_dir = os.path.join(common.gem5_src_dir, 'configs')
     common.gem5_se_file = os.path.join(common.gem5_config_dir, 'example', 'se.py')
     common.gem5_fs_file = os.path.join(common.gem5_config_dir, 'example', 'fs.py')
@@ -921,7 +931,7 @@ def setup(parser):
         common.qcow2_file = common.buildroot_qcow2_file
 
     # Image.
-    if args.baremetal is None:
+    if common.baremetal is None:
         if common.emulator == 'gem5':
             common.image = common.vmlinux
             common.disk_image = common.rootfs_raw_file
@@ -930,11 +940,11 @@ def setup(parser):
             common.disk_image = common.qcow2_file
     else:
         common.disk_image = common.gem5_fake_iso
-        if args.baremetal == 'all':
-            path = args.baremetal
+        if common.baremetal == 'all':
+            path = common.baremetal
         else:
             path = common.resolve_executable(
-                args.baremetal,
+                common.baremetal,
                 common.baremetal_src_dir,
                 common.baremetal_build_dir,
                 common.baremetal_build_ext,
