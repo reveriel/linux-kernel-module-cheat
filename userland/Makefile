@@ -44,8 +44,6 @@ else
 endif
 OUTS := $(filter-out bst_vs_heap%$(OUT_EXT),$(OUTS))
 
-OUTS += test_one.out ksmtrace.out
-
 
 OUTS := $(addprefix $(OUT_DIR)/,$(OUTS))
 
@@ -60,11 +58,6 @@ $(COMMON_OBJ): $(COMMON_DIR)/$(COMMON_BASENAME)$(IN_EXT_C)
 $(OUT_DIR)/%$(OUT_EXT): %$(IN_EXT_ASM) $(COMMON_OBJ)
 	$(CC) $(CFLAGS) $(COMMON_OBJ) -o '$@' '$<' $(LIBS)
 
-$(OUT_DIR)/ksmtrace.out: ksm-test/ksmtrace.c
-	$(CC) $(CFLAGS) -o $@ $< -I./ksm-test
-
-$(OUT_DIR)/test_one.out: ksm-test/test_one.c ksm-test/bk.c
-	$(CC) $(CFLAGS) -o $@ ksm-test/test_one.c ksm-test/bk.c  -I./ksm-test
 
 $(OUT_DIR)/%$(OUT_EXT): %$(IN_EXT_C) $(COMMON_OBJ)
 	$(CC) $(CFLAGS) $(COMMON_OBJ) -o '$@' '$<' $(LIBS)
