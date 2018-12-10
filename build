@@ -434,7 +434,7 @@ if args.download_dependencies:
             ['python3', '-m', 'pip', 'install', '--user', common.Newline] +
             common.add_newlines(sorted(python3_pkgs))
         )
-    git_cmd_common = ['git', 'submodule', 'update', '--init', '--recursive']
+    git_cmd_common = ['git', 'submodule', 'update', '--init', '--recursive', '--progress']
     if submodules:
         # == Other nice git options for when distros move to newer Git
         #
