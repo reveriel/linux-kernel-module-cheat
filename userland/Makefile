@@ -17,9 +17,11 @@ OBJ_EXT = .o
 OUT_EXT = .out
 OUT_DIR = $(CURDIR)
 
+.DEFAULT_GOAL := all
+
 -include params.mk
 
-OUTS := $(foreach IN_EXT,$(IN_EXT_ASM) $(IN_EXT_C) $(IN_EXT_CXX),$(addsuffix $(OUT_EXT), $(basename $(wildcard *$(IN_EXT)))))
+OUTS += $(foreach IN_EXT,$(IN_EXT_ASM) $(IN_EXT_C) $(IN_EXT_CXX),$(addsuffix $(OUT_EXT), $(basename $(wildcard *$(IN_EXT)))))
 ifeq ($(HAS_EIGEN),y)
 	CXXFLAGS_EXTRA += -I$(STAGING_DIR)/usr/include/eigen3
 	# TODO: was failing with:
@@ -43,7 +45,6 @@ else
 	OUTS := $(filter-out openblas_%$(OUT_EXT),$(OUTS))
 endif
 OUTS := $(filter-out bst_vs_heap%$(OUT_EXT),$(OUTS))
-
 
 OUTS := $(addprefix $(OUT_DIR)/,$(OUTS))
 

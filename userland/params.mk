@@ -1,7 +1,6 @@
 SUBDIRS := interactive arch/$(ARCH)/
 
-
-OUTS += test_one.out ksmtrace.out
+OUTS := test_one.out ksmtrace.out
 
 $(OUT_DIR)/ksmtrace.out: ksm-test/ksmtrace.c
 	$(CC) $(CFLAGS) -o $@ $< -I./ksm-test
