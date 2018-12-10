@@ -3,7 +3,7 @@
 ARCH = $(shell uname -m)
 CCFLAGS = -ggdb3 -I$(COMMON_DIR) -O0 -Wall -Werror -Wextra -Wno-unused-function $(CCFLAGS_EXTRA) $(CCFLAGS_SCRIPT)
 CFLAGS = -fopenmp -std=c99 $(CCFLAGS) $(CFLAGS_EXTRA)
-CXXFLAGS = -std=c++17 $(CCFLAGS) $(CXXFLAGS_EXTRA)
+CXXFLAGS = $(CCFLAGS) $(CXXFLAGS_EXTRA)
 # -Wno-unused-function for function definitions on headers,
 #  because we are lazy to make a shared object. TODO.
 COMMON_DIR = $(CURDIR)/..
@@ -17,9 +17,11 @@ OBJ_EXT = .o
 OUT_EXT = .out
 OUT_DIR = $(CURDIR)
 
+.DEFAULT_GOAL := all
+
 -include params.mk
 
-OUTS := $(foreach IN_EXT,$(IN_EXT_ASM) $(IN_EXT_C) $(IN_EXT_CXX),$(addsuffix $(OUT_EXT), $(basename $(wildcard *$(IN_EXT)))))
+OUTS += $(foreach IN_EXT,$(IN_EXT_ASM) $(IN_EXT_C) $(IN_EXT_CXX),$(addsuffix $(OUT_EXT), $(basename $(wildcard *$(IN_EXT)))))
 ifeq ($(HAS_EIGEN),y)
 	CXXFLAGS_EXTRA += -I$(STAGING_DIR)/usr/include/eigen3
 	# TODO: was failing with:
@@ -42,6 +44,8 @@ ifeq ($(HAS_OPENBLAS),y)
 else
 	OUTS := $(filter-out openblas_%$(OUT_EXT),$(OUTS))
 endif
+OUTS := $(filter-out bst_vs_heap%$(OUT_EXT),$(OUTS))
+
 OUTS := $(addprefix $(OUT_DIR)/,$(OUTS))
 
 all: mkdir $(OUTS)
@@ -54,6 +58,7 @@ $(COMMON_OBJ): $(COMMON_DIR)/$(COMMON_BASENAME)$(IN_EXT_C)
 
 $(OUT_DIR)/%$(OUT_EXT): %$(IN_EXT_ASM) $(COMMON_OBJ)
 	$(CC) $(CFLAGS) $(COMMON_OBJ) -o '$@' '$<' $(LIBS)
+
 
 $(OUT_DIR)/%$(OUT_EXT): %$(IN_EXT_C) $(COMMON_OBJ)
 	$(CC) $(CFLAGS) $(COMMON_OBJ) -o '$@' '$<' $(LIBS)

@@ -230,7 +230,7 @@ The safe way, is to fist quit QEMU, rebuild the modules, put them in the root fi
 ....
 ./build-modules
 ./build-buildroot
-./run --eval-busybox 'insmod /hello.ko'
+./run --eval-after 'insmod /hello.ko'
 ....
 
 `./build-buildroot` is required after `./build-modules` because it generates the root filesystem with the modules that we compiled at `./build-modules`.
@@ -241,7 +241,7 @@ You can see that `./build` does that as well, by running:
 ./build --dry-run
 ....
 
-`--eval-busybox` is optional: you could just type `insmod /hello.ko` in the terminal, but this makes it run automatically at the end of boot, and then drops you into a shell.
+`--eval-after` is optional: you could just type `insmod /hello.ko` in the terminal, but this makes it run automatically at the end of boot, and then drops you into a shell.
 
 If the guest and host are the same arch, typically x86_64, you can speed up boot further with <<kvm>>:
 
@@ -275,7 +275,7 @@ then as usual rebuild and re-run:
 
 .....
 ./build-qemu
-./run --eval-busybox 'grep "model name" /proc/cpuinfo'
+./run --eval-after 'grep "model name" /proc/cpuinfo'
 .....
 
 and once again, there is your message: QEMU communicated it to the Linux kernel, which printed it out.
@@ -498,7 +498,9 @@ Our prebuilts currently include:
 * Linux kernel
 * root filesystem
 
-Advantage: saves time and disk space on the initial install, which is expensive in largely due to building the toolchain.
+For more details, see our our <<release,release procedure>>.
+
+Advantage of this setup: saves time and disk space on the initial install, which is expensive in largely due to building the toolchain.
 
 The limitations are severe however:
 
@@ -506,34 +508,27 @@ The limitations are severe however:
 +
 Maybe we could work around this by just downloading the kernel source somehow, and using a host prebuilt GDB, but we felt that it would be too messy and unreliable.
 * you won't get the latest version of this repository. Our <<travis>> attempt to automate builds failed, and storing a release for every commit would likely make GitHub mad at us anyways.
-* <<gem5>> is not currently supported, although it should not be too hard to do. Annoyances:
-+
-** there is no Debian package for it, so you have to compile your own, so you might as well just build the image itself
-** it does not handle <<gem5-qcow2,qcow2>>, and we haven't gotten <<squashfs>> to work yet, therefore we would have to either distribute large ext2 images, or constantly fight with <<br2_target_rootfs_ext2_size>>
-** QEMU uses `bzImage` and gem5 the raw `vmlinux`, and we don't want to distribute the same thing twice...
-+
-Our attempt at using link:https://github.com/torvalds/linux/blob/master/scripts/extract-vmlinux[`extract-vmlinux`] to convert between them failed for `aarch64` with:
-+
-....
-run-detectors: unable to find an interpreter for
-....
+* <<gem5>> is not currently supported. The major blocking point is how to avoid distributing the kernel images twice: once for gem5 which uses `vmlinux`, and once for QEMU which uses `arch/*` images, see also: <<vmlinux-vs-bzimage-vs-zimage-vs-image>>.
 
 This setup might be good enough for those developing simulators, as that requires less image modification. But once again, if you are serious about this, why not just let your computer build the <<qemu-buildroot-setup,full featured setup>> while you take a coffee or a nap? :-)
 
 ==== Prebuilt Buildroot setup getting started
 
-Some times it works with the host QEMU:
+Checkout to the latest tag and use the Ubuntu packaged QEMU:
 
 ....
 sudo apt-get install qemu-system-x86
 git clone https://github.com/cirosantilli/linux-kernel-module-cheat
 cd linux-kernel-module-cheat
+git checkout "$(git rev-list --tags --max-count=1)"
 ./release-download-latest
 unzip lkmc-*.zip
 ./run --prebuilt
 ....
 
-but to be sure, build your own at a tested revision:
+You have to checkout to the latest tag to ensure that the scripts match the release format: https://stackoverflow.com/questions/1404796/how-to-get-the-latest-tag-name-in-current-branch-in-git
+
+Be saner and use our custom built QEMU instead:
 
 ....
 git submodule update --init --recursive "$(./getvar qemu_src_dir)"
@@ -543,16 +538,7 @@ git submodule update --init --recursive "$(./getvar qemu_src_dir)"
 
 This also allows you to <<your-first-qemu-hack,modify QEMU>> if you're into that sort of thing.
 
-To try an older prebuilt:
-
-* download it from: link:https://github.com/cirosantilli/linux-kernel-module-cheat/releases[]
-* checkout this repo to match the SHA of the release
-
-then do whatever that checked out README says.
-
-If you are curious to see what the releases contain in detail, have a look at our <<release,release procedure>>.
-
-To build the kernel modules, simply do:
+To build the kernel modules as in <<your-first-kernel-module-hack>> do:
 
 ....
 ./build-linux -- modules_prepare
@@ -561,6 +547,8 @@ To build the kernel modules, simply do:
 ....
 
 `modules_prepare` does the minimal build procedure required on the kernel for us to be able to compile the kernel modules, and is way faster than doing a full kernel build. A full kernel build would also work however.
+
+This command automatically falls back to the Ubuntu packaged GCC since you don't have the Buildroot toolchain.
 
 To modify the Linux kernel, build and use it as usual:
 
@@ -1081,7 +1069,7 @@ It is kind of random: if you just `insmod` manually and then immediately `./run-
 But this fails most of the time: shell 1:
 
 ....
-./run --arch arm --eval-busybox 'insmod /hello.ko'
+./run --arch arm --eval-after 'insmod /hello.ko'
 ....
 
 shell 2:
@@ -1170,7 +1158,7 @@ So once we find the address the first time, we can just reuse it afterwards, as 
 Do a fresh boot and get the module:
 
 ....
-./run --eval-busybox '/pr_debug.sh;insmod /fops.ko;/poweroff.out'
+./run --eval-after '/pr_debug.sh;insmod /fops.ko;/poweroff.out'
 ....
 
 The boot must be fresh, because the load address changes every time we insert, even after removing previous modules.
@@ -1346,7 +1334,7 @@ See also: https://stackoverflow.com/questions/2589845/what-are-the-first-operati
 
 <<gem5-tracing>> with `--debug-flags=Exec` does show the right symbols however! So in the worst case, we can just read their source. Amazing.
 
-TODO: try out `CONFIG_HAVE_KERNEL_UNCOMPRESSED=y` from Linux v4.19 and see if it gives us any extra visibility.
+v4.19 also added a `CONFIG_HAVE_KERNEL_UNCOMPRESSED=y` option for having the kernel uncompressed which could make following the startup easier, but it is only available on s390. `aarch64` however is already uncompressed by default, so might be the easiest one. See also: <<vmlinux-vs-bzimage-vs-zimage-vs-image>>.
 
 ==== GDB step debug early boot by address
 
@@ -1601,12 +1589,14 @@ See also: https://github.com/cirosantilli/linux-kernel-module-cheat/issues/19
 
 The implementation is described at: https://stackoverflow.com/questions/46415059/how-to-observe-aarch64-system-registers-in-qemu/53043044#53043044
 
-=== GDB step debug multicore
+=== GDB step debug multicore userland
+
+For a more minimal baremetal multicore setup, see: <<arm-multicore>>.
 
 We can set and get which cores the Linux kernel allows a program to run on with `sched_getaffinity` and `sched_setaffinity`:
 
 ....
-./run --cpus 2 --eval-busybox '/sched_getaffinity.out'
+./run --cpus 2 --eval-after '/sched_getaffinity.out'
 ....
 
 Source: link:userland/sched_getaffinity.c[]
@@ -1636,7 +1626,7 @@ The number of cores is modified as explained at: <<number-of-cores>>
   --config 'BR2_PACKAGE_UTIL_LINUX=y' \
   --config 'BR2_PACKAGE_UTIL_LINUX_SCHEDUTILS=y' \
 ;
-./run --eval-busybox 'taskset -c 1,1 /sched_getaffinity.out'
+./run --eval-after 'taskset -c 1,1 /sched_getaffinity.out'
 ....
 
 output:
@@ -1658,7 +1648,7 @@ We will run our `/sched_getaffinity.out` infinitely many time, on core 0 and cor
 ./run \
   --cpus 2 \
   --wait-gdb \
-  --eval-busybox 'i=0; while true; do taskset -c $i,$i /sched_getaffinity.out; i=$((! $i)); done' \
+  --eval-after 'i=0; while true; do taskset -c $i,$i /sched_getaffinity.out; i=$((! $i)); done' \
 ;
 ....
 
@@ -1690,7 +1680,7 @@ We should also try it out with kernel modules: https://stackoverflow.com/questio
 TODO we then tried:
 
 ....
-./run --cpus 2 --eval-busybox '/sched_getaffinity_threads.out'
+./run --cpus 2 --eval-after '/sched_getaffinity_threads.out'
 ....
 
 and:
@@ -2217,7 +2207,7 @@ I've tried:
 
 ....
 ./run-toolchain --arch aarch64 gcc -- -static ~/test/hello_world.c -o "$(./getvar p9_dir)/a.out"
-./run --arch aarch64 --eval-busybox '/mnt/9p/data/a.out'
+./run --arch aarch64 --eval-after '/mnt/9p/data/a.out'
 ....
 
 but it fails with:
@@ -2373,7 +2363,7 @@ This executable is a convenient simple init that does not panic and sleeps inste
 Get a reasonable answer to "how long does boot take?":
 
 ....
-./run --eval-busybox '/time_boot.out'
+./run --eval-after '/time_boot.out'
 ....
 
 Dmesg contains a message of type:
@@ -2389,10 +2379,10 @@ Bibliography: https://stackoverflow.com/questions/12683169/measure-time-taken-fo
 [[init-busybox]]
 === Run command at the end of BusyBox init
 
-Use the `--eval-busybox` option is for you rely on something that BusyBox' init set up for you like `/etc/fstab`:
+Use the `--eval-after` option is for you rely on something that BusyBox' init set up for you like `/etc/fstab`:
 
 ....
-./run --eval-busybox 'echo asdf;ls /proc;ls /sys;echo qwer'
+./run --eval-after 'echo asdf;ls /proc;ls /sys;echo qwer'
 ....
 
 After the commands run, you are left on an interactive shell.
@@ -2405,7 +2395,7 @@ The above command is basically equivalent to:
 
 where the `lkmc_eval` option gets evaled by our default link:rootfs_overlay/etc/init.d/S98[S98] startup script.
 
-Except that `--eval-busybox` is smarter and uses `base64` encoding.
+Except that `--eval-after` is smarter and uses `base64` encoding.
 
 Alternatively, you can also add the comamdns to run to a new `init.d` entry to run at the end o the BusyBox init:
 
@@ -2852,6 +2842,31 @@ We don't enable KVM by default because:
 
 One important use case for KVM is to fast forward gem5 execution, often to skip boot, take a <<gem5-checkpoint>>, and then move on to a more detailed and slow simulation
 
+=== KVM arm
+
+TODO: we haven't gotten it to work yet, but it should be doable, and this is an outline of how to do it. Just don't expect this to tested very often for now.
+
+We can test KVM on arm by running this repository inside an Ubuntu arm QEMU VM.
+
+This produces no speedup of course, since the VM is already slow since it cannot use KVM on the x86 host.
+
+First, obtain an Ubuntu arm64 virtual machine as explained at: https://askubuntu.com/questions/281763/is-there-any-prebuilt-qemu-ubuntu-image32bit-online/1081171#1081171
+
+Then, from inside that image:
+
+....
+sudo apt-get install git
+git clone https://github.com/cirosantilli/linux-kernel-module-cheat
+cd linux-kernel-module-cheat
+sudo ./setup -y
+....
+
+and then proceed exactly as in <<prebuilt>>.
+
+We don't want to build the full Buildroot image inside the VM as that would be way too slow, thus the recommendation for the prebuilt setup.
+
+TODO: do the right thing and cross compile QEMU and gem5. gem5's Python parts might be a pain. QEMU should be easy: https://stackoverflow.com/questions/26514252/cross-compile-qemu-for-arm
+
 == User mode simulation
 
 Both QEMU and gem5 have an user mode simulation mode in addition to full system simulation that we consider elsewhere in this project.
@@ -2885,11 +2900,11 @@ The target Linux kernel of the executable is a GCC toolchain build-time configur
 First let's run a dynamically linked executable built with the Buildroot toolchain:
 
 ....
-./build-qemu --arch arm --userland
-./build-userland --arch arm
-./build-buildroot --arch arm
+./build-qemu --arch aarch64 --userland
+./build-userland --arch aarch64
+./build-buildroot --arch aarch64
 ./run \
-  --arch arm \
+  --arch aarch64 \
   --userland print_argv \
   -- \
   asdf qwer \
@@ -2908,12 +2923,12 @@ You can also try statically linked executables with:
 
 ....
 ./build-userland \
-  --arch arm \
+  --arch aarch64 \
   --make-args='CCFLAGS_EXTRA=-static' \
   --userland-build-id static \
 ;
 ./run \
-  --arch arm \
+  --arch aarch64 \
   --userland-build-id static \
   --userland print_argv \
   -- \
@@ -2925,13 +2940,13 @@ Or you can run statically linked built by the host packaged toolchain with:
 
 ....
 ./build-userland \
-  --arch arm \
+  --arch aarch64 \
   --host \
   --make-args='-B CFLAGS_EXTRA=-static' \
   --userland-build-id host-static \
 ;
 ./run \
-  --arch arm \
+  --arch aarch64 \
   --userland-build-id host-static \
   --userland print_argv \
   -- \
@@ -2947,9 +2962,9 @@ It's nice when <<gdb,the obvious>> just works, right?
 
 ....
 ./run \
-  --arch arm \
-  --wait-gdb \
+  --arch aarch64 \
   --userland print_argv \
+  --wait-gdb \
   -- \
   asdf qwer \
 ;
@@ -2959,13 +2974,26 @@ and on another shell:
 
 ....
 ./run-gdb \
-  --arch arm \
+  --arch aarch64 \
   --userland print_argv \
   main \
 ;
 ....
 
-or to stop at the very first instruction of a freestanding program, just use `--no-continue` TODO example.
+Or alternatively, if you are using <<tmux>>, do everything in one go with:
+
+....
+./run \
+  --arch aarch64 \
+  --userland print_argv \
+  --tmux=main \
+  --wait-gdb \
+  -- \
+  asdf qwer \
+;
+....
+
+To stop at the very first instruction of a freestanding program, just use `--no-continue` TODO example.
 
 === gem5 syscall emulation mode
 
@@ -3059,7 +3087,7 @@ gem5 full system:
 time \
   ./run \
   --arch arm \
-  --eval-busybox '/gem5.sh' \
+  --eval-after '/gem5.sh' \
   --gem5
   --gem5-readfile 'dhrystone 100000' \
 ;
@@ -3077,7 +3105,7 @@ QEMU full system:
 time \
   ./run \
   --arch arm \
-  --eval-busybox 'time dhrystone 100000000;/poweroff.out' \
+  --eval-after 'time dhrystone 100000000;/poweroff.out' \
 ;
 ....
 
@@ -3095,7 +3123,7 @@ Result on <<p51>> at bad30f513c46c1b0995d3a10c0d9bc2a33dc4fa0:
 link:https://git.busybox.net/busybox/tree/modutils/insmod.c?h=1_29_3[Provided by BusyBox]:
 
 ....
-./run --eval-busybox 'insmod /hello.ko'
+./run --eval-after 'insmod /hello.ko'
 ....
 
 === myinsmod
@@ -4271,8 +4299,8 @@ and so it is Read Only as shown by `ro`.
 Disable userland address space randomization. Test it out by running <<rand_check-out>> twice:
 
 ....
-./run --eval-busybox '/rand_check.out;/poweroff.out'
-./run --eval-busybox '/rand_check.out;/poweroff.out'
+./run --eval-after '/rand_check.out;/poweroff.out'
+./run --eval-after '/rand_check.out;/poweroff.out'
 ....
 
 If we remove it from our link:run[] script by hacking it up, the addresses shown by `rand_check.out` vary across boots.
@@ -5027,7 +5055,7 @@ If `CONFIG_KALLSYMS=n`, then addresses are shown on traces instead of symbol plu
 In v4.16 it does not seem possible to configure that at runtime. GDB step debugging with:
 
 ....
-./run --eval-busybox 'insmod /dump_stack.ko' --wait-gdb --tmux=dump_stack
+./run --eval-after 'insmod /dump_stack.ko' --wait-gdb --tmux=dump_stack
 ....
 
 shows that traces are printed at `arch/x86/kernel/dumpstack.c`:
@@ -5759,7 +5787,7 @@ Source: link:kernel_modules/work_from_work.c[]
 Let's block the entire kernel! Yay:
 
 .....
-./run --eval-busybox 'dmesg -n 1;insmod /schedule.ko schedule=0'
+./run --eval-after 'dmesg -n 1;insmod /schedule.ko schedule=0'
 .....
 
 Outcome: the system hangs, the only way out is to kill the VM.
@@ -5773,7 +5801,7 @@ Sleep functions like `usleep_range` also end up calling schedule.
 If we allow `schedule()` to be called, then the system becomes responsive:
 
 .....
-./run --eval-busybox 'dmesg -n 1;insmod /schedule.ko schedule=1'
+./run --eval-after 'dmesg -n 1;insmod /schedule.ko schedule=1'
 .....
 
 
@@ -5786,7 +5814,7 @@ dmesg -w
 The system also responds if we <<number-of-cores,add another core>>:
 
 ....
-./run --cpus 2 --eval-busybox 'dmesg -n 1;insmod /schedule.ko schedule=0'
+./run --cpus 2 --eval-after 'dmesg -n 1;insmod /schedule.ko schedule=0'
 ....
 
 ==== Wait queues
@@ -5866,7 +5894,7 @@ Bibliography:
 Brute force monitor every shared interrupt that will accept us:
 
 ....
-./run --eval-busybox 'insmod /irq.ko' --graphic
+./run --eval-after 'insmod /irq.ko' --graphic
 ....
 
 Source: link:kernel_modules/irq.c[].
@@ -6678,7 +6706,7 @@ Detects buffer overflows for us:
 ./build-modules --clean
 ./build-modules
 ./build-buildroot
-./run --eval-busybox 'insmod /strlen_overflow.ko' --linux-build-id fortify
+./run --eval-after 'insmod /strlen_overflow.ko' --linux-build-id fortify
 ....
 
 Possible dmesg output:
@@ -7186,7 +7214,7 @@ DRM / DRI is the new interface that supersedes `fbdev`:
 ....
 ./build-buildroot --config 'BR2_PACKAGE_LIBDRM=y'
 ./build-userland --has-package libdrm -- libdrm_modeset
-./run --eval-busybox '/libdrm_modeset.out' --graphic
+./run --eval-after '/libdrm_modeset.out' --graphic
 ....
 
 Source: link:userland/libdrm_modeset.c[]
@@ -7199,7 +7227,7 @@ TODO not working for `aarch64`, it takes over the screen for a few seconds and t
 ./build-buildroot --config 'BR2_PACKAGE_LIBDRM=y'
 ./build-userland --has-package libdrm
 ./build-buildroot
-./run --eval-busybox '/libdrm_modeset.out' --graphic
+./run --eval-after '/libdrm_modeset.out' --graphic
 ....
 
 <<kmscube>> however worked, which means that it must be a bug with this demo?
@@ -7224,7 +7252,7 @@ Try creating new displays:
 to see multiple `/dev/dri/cardN`, and then use a different display with:
 
 ....
-./run --eval-busybox '/libdrm_modeset.out' --graphic
+./run --eval-after '/libdrm_modeset.out' --graphic
 ....
 
 Bibliography:
@@ -7381,6 +7409,27 @@ kill %1
 
 `stress -c 1 -t 1` makes gem5 irresponsive for a very long time.
 
+== Linux kernel build system
+
+=== vmlinux vs bzImage vs zImage vs Image
+
+Between all archs on QEMU and gem5 we touch all of those kernel built output files.
+
+We are trying to maintain a description of each at: https://unix.stackexchange.com/questions/5518/what-is-the-difference-between-the-following-kernel-makefile-terms-vmlinux-vml/482978#482978
+
+QEMU does not seem able to boot ELF files like `vmlinux`, only `objdump` code: https://superuser.com/questions/1376944/can-qemu-boot-linux-from-vmlinux-instead-of-bzimage
+
+Converting `arch/*` images to `vmlinux` is possible in x86 with link:https://github.com/torvalds/linux/blob/master/scripts/extract-vmlinux[`extract-vmlinux`]. But for arm it fails with:
+
+....
+run-detectors: unable to find an interpreter for
+....
+
+as mentioned at:
+
+* https://unix.stackexchange.com/questions/352215/how-do-i-extract-vmlinux-from-an-arm-image
+* https://raspberrypi.stackexchange.com/questions/88621/why-doesnt-extract-vmlinux-work-with-raspbians-boot-kernel-img
+
 == QEMU
 
 === Introduction to QEMU
@@ -7412,14 +7461,14 @@ For QEMU, this is done by passing the `snapshot` option to `-drive`, and for gem
 If you hack up our link:run[] script to remove that option, then:
 
 ....
-./run --eval-busybox 'date >f;poweroff'
+./run --eval-after 'date >f;poweroff'
 
 ....
 
 followed by:
 
 ....
-./run --eval-busybox 'cat f'
+./run --eval-after 'cat f'
 ....
 
 gives the date, because `poweroff` without `-n` syncs before shutdown.
@@ -7485,7 +7534,7 @@ qcow2 filesystems must be used for that to work.
 To test it out, login into the VM with and run:
 
 ....
-./run --eval-busybox 'umount /mnt/9p/*;/count.sh'
+./run --eval-after 'umount /mnt/9p/*;/count.sh'
 ....
 
 On another shell, take a snapshot:
@@ -8167,10 +8216,19 @@ The most interesting are events which show instructions that QEMU ran, for which
 
 Under the hood, this uses QEMU's `-trace` option.
 
-You can then inspect the instructions with:
+You can then inspect the address of each instruction run:
 
 ....
 less "$(./getvar --arch x86_64 run_dir)/trace.txt"
+....
+
+Sample output excerpt:
+
+....
+exec_tb 0.000 pid=10692 tb=0x7fb4f8000040 pc=0xfffffff0
+exec_tb 35.391 pid=10692 tb=0x7fb4f8000180 pc=0xfe05b
+exec_tb 21.047 pid=10692 tb=0x7fb4f8000340 pc=0xfe066
+exec_tb 12.197 pid=10692 tb=0x7fb4f8000480 pc=0xfe06a
 ....
 
 Get the list of available trace events:
@@ -8178,6 +8236,8 @@ Get the list of available trace events:
 ....
 ./run --trace help
 ....
+
+TODO: any way to show the actualy disassembled instruction executed directly from there? Possible with <<qemu-d-tracing>>.
 
 Enable other specific trace events:
 
@@ -8240,7 +8300,25 @@ IN:
 
 TODO: after `IN:`, symbol names are meant to show, which is awesome, but I don't get any. I do see them however when running a bare metal example from: https://github.com/cirosantilli/newlib-examples/tree/900a9725947b1f375323c7da54f69e8049158881
 
-TODO: what is the point of having two mechanisms, `-trace` and  `-d`? `-d` tracing is cool because it does not require a messy recompile, and it can also show symbols.
+TODO: what is the point of having two mechanisms, `-trace` and `-d`? `-d` tracing is cool because it does not require a messy recompile, and it can also show symbols.
+
+==== QEMU trace register values
+
+TODO: is it possible to show the register values for each instruction?
+
+This would include the memory values read into the registers.
+
+Asked at: https://superuser.com/questions/1377764/how-to-trace-the-register-values-of-executed-instructions-in-qemu
+
+Seems impossible due to optimizations that QEMU does:
+
+* https://lists.gnu.org/archive/html/qemu-devel/2015-06/msg07479.html
+* https://lists.gnu.org/archive/html/qemu-devel/2014-04/msg02856.html
+* https://lists.gnu.org/archive/html/qemu-devel/2012-08/msg03057.html
+
+PANDA can list memory addresses, so I bet it can also decode the instructions: https://github.com/panda-re/panda/blob/883c85fa35f35e84a323ed3d464ff40030f06bd6/panda/docs/LINE_Censorship.md I wonder why they don't just upstream those things to QEMU's tracing: https://github.com/panda-re/panda/issues/290
+
+gem5 can do it: <<gem5-tracing>>.
 
 ==== Trace source lines
 
@@ -8279,15 +8357,15 @@ This awesome feature allows you to examine a single run as many times as you wou
 
 ....
 # Record a run.
-./run --eval-busybox '/rand_check.out;/poweroff.out;' --record
+./run --eval-after '/rand_check.out;/poweroff.out;' --record
 # Replay the run.
-./run --eval-busybox '/rand_check.out;/poweroff.out;' --replay
+./run --eval-after '/rand_check.out;/poweroff.out;' --replay
 ....
 
 A convenient shortcut to do both at once to test the feature is:
 
 ....
-./qemu-rr --eval-busybox '/rand_check.out;/poweroff.out;'
+./qemu-rr --eval-after '/rand_check.out;/poweroff.out;'
 ....
 
 By comparing the terminal output of both runs, we can see that they are the exact same, including things which normally differ across runs:
@@ -8314,7 +8392,7 @@ EXT4-fs (sda): re-mounted. Opts: block_validity,barrier,user_xattr
 TODO replay with network gets stuck:
 
 ....
-./qemu-rr --eval-busybox 'ifup -a;wget -S google.com;/poweroff.out;'
+./qemu-rr --eval-after 'ifup -a;wget -S google.com;/poweroff.out;'
 ....
 
 after the message:
@@ -8333,7 +8411,7 @@ Then, when I tried with <<initrd>> and no disk:
 
 ....
 ./build-buildroot --arch aarch64 -i
-./qemu-rr --arch aarch64 --eval-busybox '/rand_check.out;/poweroff.out;' -i
+./qemu-rr --arch aarch64 --eval-after '/rand_check.out;/poweroff.out;' -i
 ....
 
 QEMU crashes with:
@@ -8353,8 +8431,8 @@ TODO get working.
 QEMU replays support checkpointing, and this allows for a simplistic "reverse debugging" implementation proposed at https://lists.gnu.org/archive/html/qemu-devel/2018-06/msg00478.html on the unmerged link:https://github.com/ispras/qemu/tree/rr-180725[]:
 
 ....
-./run --eval-busybox '/rand_check.out;/poweroff.out;' --record
-./run --eval-busybox '/rand_check.out;/poweroff.out;' --replay --wait-gdb
+./run --eval-after '/rand_check.out;/poweroff.out;' --record
+./run --eval-after '/rand_check.out;/poweroff.out;' --replay --wait-gdb
 ....
 
 On another shell:
@@ -8385,18 +8463,6 @@ TODO: is there any way to distinguish which instruction runs on each core? Doing
 ....
 
 just appears to output both cores intertwined without any clear differentiation.
-
-==== QEMU trace decode instructions
-
-TODO: is is possible to show which instructions ran at each point in time, in addition to the address of the instruction with `exec_tb` shows? Hopefully dissembled, not just the instruction memory.
-
-PANDA can list memory addresses, so I bet it can also decode the instructions: https://github.com/panda-re/panda/blob/883c85fa35f35e84a323ed3d464ff40030f06bd6/panda/docs/LINE_Censorship.md I wonder why they don't just upstream those things to QEMU's tracing: https://github.com/panda-re/panda/issues/290
-
-Memory access on vanilla seem impossible due to optimizations that QEMU does:
-
-* https://lists.gnu.org/archive/html/qemu-devel/2015-06/msg07479.html
-* https://lists.gnu.org/archive/html/qemu-devel/2014-04/msg02856.html
-* https://lists.gnu.org/archive/html/qemu-devel/2012-08/msg03057.html
 
 ==== gem5 tracing
 
@@ -8515,7 +8581,7 @@ but the approximation is reasonable.
 +
 It is used mostly for microarchitecture research purposes: when you are making a new chip technology, you don't really need to specialize enormously to an existing microarchitecture, but rather develop something that will work with a wide range of future architectures.
 ** runs are deterministic by default, unlike QEMU which has a special <<qemu-record-and-replay>> mode, that requires first playing the content once and then replaying
-** gem5 ARM at least appears to implement more low level CPU functionality than QEMU, e.g. QEMU only added EL2 in 2018, and EL3 is yet unimplemented: https://stackoverflow.com/questions/42824706/qemu-system-aarch64-entering-el1-when-emulating-a53-power-up gem5 `fs.py` can enable EL3 with `-V` and EL2 with `--enable-security-extensions`
+** gem5 ARM at least appears to implement more low level CPU functionality than QEMU, e.g. QEMU only added EL2 in 2018: https://stackoverflow.com/questions/42824706/qemu-system-aarch64-entering-el1-when-emulating-a53-power-up See also: <<arm-exception-level>>
 * disadvantage of gem5: slower than QEMU, see: <<benchmark-linux-kernel-boot>>
 +
 This implies that the user base is much smaller, since no Android devs.
@@ -8827,7 +8893,7 @@ Usage:
 ....
 ./run \
   --arch aarch64 \
-  --eval-busybox '/gem5.sh' \
+  --eval-after '/gem5.sh' \
   --gem5 \
   --gem5-readfile '/bst_vs_heap.out' \
 ;
@@ -8858,7 +8924,7 @@ Buildroot supports it, which makes everything just trivial:
 ....
 ./build-buildroot --config 'BR2_PACKAGE_OPENBLAS=y'
 ./build-userland --has-package openblas -- openblas_hello
-./run --eval-busybox '/openblas_hello.out; echo $?'
+./run --eval-after '/openblas_hello.out; echo $?'
 ....
 
 Outcome: the test passes:
@@ -8903,7 +8969,7 @@ Header only linear algebra library with a mainline Buildroot package:
 Just create an array and print it:
 
 ....
-./run --eval-busybox '/eigen_hello.out'
+./run --eval-after '/eigen_hello.out'
 ....
 
 Output:
@@ -10178,44 +10244,59 @@ For example, on the first shell:
 then on the second shell:
 
 ....
-./run-gdb --arch arm --baremetal interactive/prompt --no-continue
+./run-gdb --arch arm --baremetal interactive/prompt -- main
 ....
 
-and now we are left at the very first executed instruction of our tiny bootloader: link:baremetal/lib/arm.S[]
-
-Then just use `stepi` to when jumping into main to go to the C code in link:baremetal/interactive/prompt.c[].
-
-The bootloader is used to put the hardware in its main operating mode before we run our main payload on it.
-
-You can also find executables that don't use the bootloader at all under `baremetal/arch/<arch>/no_bootloader/*.S`, e.g.:
+Or if you are a <<tmux,tmux pro>>, do everything in one go with:
 
 ....
-./run --arch arm --baremetal arch/arm/no_bootloader/semihost_exit --wait-gdb
+./run --arch arm --baremetal interactive/prompt --wait-gdb --tmux=main
+....
+
+Alternatively, to start from the very first executed instruction of our tiny <<baremetal-bootloaders>>:
+
+....
+./run --arch arm --baremetal interactive/prompt --wait-gdb --tmux=--no-continue
+....
+
+Now you can just `stepi` to when jumping into main to go to the C code in link:baremetal/interactive/prompt.c[].
+
+This is specially interesting for the executables that don't use the bootloader from under `baremetal/arch/<arch>/no_bootloader/*.S`, e.g.:
+
+....
+./run --arch arm --baremetal arch/arm/no_bootloader/semihost_exit --wait-gdb --tmux=--no-continue
 ....
 
 The cool thing about those examples is that you start at the very first instruction of your program, which gives more control.
 
-However, those examples tend to be less portable, so we use examples with the bootloader for the most part.
+`aarch64` gem5 GDB step debug is broken as mentioned at: <<gem5-gdb-step-debug-kernel-aarch64>>.
 
-Alternatively, skip directly to the C program main function with:
+=== Baremetal bootloaders
 
-....
-./run-gdb --arch arm --baremetal interactive/prompt main
-....
+As can be seen from <<baremetal-gdb-step-debug>>, all examples under link:baremetal/[], with the exception of `baremetal/arch/<arch>/no_bootloader`, start from our tiny bootloaders:
 
-and then proceed as usual:
+* link:baremetal/lib/arm.S[]
+* link:baremetal/lib/aarch64.S[]
 
-....
-./run --arch arm --baremetal interactive/prompt --wait-gdb --gem5
-....
+Out simplistic bootloaders basically setup up just enough system state to allow calling:
 
-and on another shell:
+* C functions such as `exit` from the assembly examples
+* the `main` of C examples itself
 
-....
-./run-gdb --arch arm --baremetal interactive/prompt --gem5 --no-continue
-....
+The most important things that we setup in the bootloaders are:
 
-`aarch64` GDB step debug is broken as mentioned at: <<gem5-gdb-step-debug-kernel-aarch64>>.
+* the stack pointer
+* NEON: <<aarch64-baremetal-neon-setup>>
+* TODO: we don't do this currently but maybe we should setup BSS
+
+The C functions that become available as a result are:
+
+* Newlib functions implemented at link:baremetal/lib/syscalls.c[]
+* non-Newlib functions implemented at link:common.c[]
+
+It is not possible to call those C functions from the examples that don't use a bootloader.
+
+For this reason, we tend to create examples with bootloaders, as it is easier to write them portably.
 
 === Semihosting
 
@@ -10396,7 +10477,13 @@ help architecture
 
 shows ARM version up to `armv6`, so maybe `armv6` is not implemented?
 
-=== ARM exception level
+=== ARM baremetal
+
+In this section we will focus on learning ARM architecture concepts that can only learnt on baremetal setups.
+
+Userland information can be found at: https://github.com/cirosantilli/arm-assembly-cheat
+
+==== ARM exception level
 
 ARM exception levels are analogous to x86 <<ring0,rings>>.
 
@@ -10467,6 +10554,144 @@ output:
 2
 3
 ....
+
+==== ARM multicore
+
+....
+./run --arch aarch64 --baremetal arch/aarch64/multicore --cpus 2
+./run --arch aarch64 --baremetal arch/aarch64/multicore --cpus 2 --gem5
+./run --arch arm --baremetal arch/aarch64/multicore --cpus 2
+./run --arch arm --baremetal arch/aarch64/multicore --cpus 2 --gem5
+....
+
+Sources:
+
+* link:baremetal/arch/aarch64/multicore.S[]
+* link:baremetal/arch/arm/multicore.S[]
+
+CPU 0 of this program enters a spinlock loop: it repeatedly checks if a given memory address is `1`.
+
+So, we need CPU 1 to come to the rescue and set that memory address to `1`, otherwise CPU 0 will be stuck there forever!
+
+Don't believe me? Then try:
+
+....
+./run --arch aarch64 --baremetal arch/aarch64/multicore --cpus 1
+....
+
+and watch it hang forever.
+
+Note that if you try the same thing on gem5:
+
+....
+./run --arch aarch64 --baremetal arch/aarch64/multicore --cpus 1 --gem5
+....
+
+then the gem5 actually exits, but with a different message:
+
+....
+Exiting @ tick 18446744073709551615 because simulate() limit reached
+....
+
+as opposed to the expected:
+
+....
+Exiting @ tick 36500 because m5_exit instruction encountered
+....
+
+since gem5 is able to detect when nothing will ever happen, and exits.
+
+When GDB step debugging, switch between cores with the usual `thread` commands, see also: <<gdb-step-debug-multicore-userland>>.
+
+Bibliography: https://stackoverflow.com/questions/980999/what-does-multicore-assembly-language-look-like/33651438#33651438
+
+===== WFE and SEV
+
+The `WFE` and `SEV` instructions are just hints: a compliant implementation can treat them as NOPs.
+
+However, likely no implementation likely does (TODO confirm), since:
+
+* `WFE` puts the core in a low power mode
+* `SEV` wakes up cores from a low power mode
+
+and power consumption is key in ARM applications.
+
+In QEMU 3.0.0, `SEV` is a NOPs, and `WFE` might be, but I'm not sure, see: https://github.com/qemu/qemu/blob/v3.0.0/target/arm/translate-a64.c#L1423
+
+....
+    case 2: /* WFE */
+        if (!(tb_cflags(s->base.tb) & CF_PARALLEL)) {
+            s->base.is_jmp = DISAS_WFE;
+        }
+        return;
+    case 4: /* SEV */
+    case 5: /* SEVL */
+        /* we treat all as NOP at least for now */
+        return;
+....
+
+TODO: what does the WFE code do? How can it not be a NOP if SEV is a NOP? https://github.com/qemu/qemu/blob/v3.0.0/target/arm/translate.c#L4609 might explain why, but it is Chinese to me (I only understand 30% ;-)):
+
+....
+ * For WFI we will halt the vCPU until an IRQ. For WFE and YIELD we
+ * only call the helper when running single threaded TCG code to ensure
+ * the next round-robin scheduled vCPU gets a crack. In MTTCG mode we
+ * just skip this instruction. Currently the SEV/SEVL instructions
+ * which are *one* of many ways to wake the CPU from WFE are not
+ * implemented so we can't sleep like WFI does.
+ */
+....
+
+For gem5 however, if we comment out the `SVE` instruction, then it actually exits with `simulate() limit reached`, so the CPU truly never wakes up, which is a more realistic behaviour.
+
+The following Raspberry Pi bibliography helped us get this sample up and running:
+
+* https://github.com/bztsrc/raspi3-tutorial/tree/a3f069b794aeebef633dbe1af3610784d55a0efa/02_multicorec
+* https://github.com/dwelch67/raspberrypi/tree/a09771a1d5a0b53d8e7a461948dc226c5467aeec/multi00
+* https://github.com/LdB-ECM/Raspberry-Pi/blob/3b628a2c113b3997ffdb408db03093b2953e4961/Multicore/SmartStart64.S
+* https://github.com/LdB-ECM/Raspberry-Pi/blob/3b628a2c113b3997ffdb408db03093b2953e4961/Multicore/SmartStart32.S
+
+===== PSCI
+
+In QEMU, CPU 1 starts in a halted state. This can be observed from GDB, where:
+
+....
+info threads
+....
+
+shows something like:
+
+....
+* 1    Thread 1 (CPU#0 [running]) mystart
+  2    Thread 2 (CPU#1 [halted ]) mystart
+....
+
+To wake up CPU 1 on QEMU, we must use the Power State Coordination Interface (PSCI) which is documented at: link:https://developer.arm.com/docs/den0022/latest/arm-power-state-coordination-interface-platform-design-document[].
+
+This interface uses `HVC` calls, and the calling convention is documented at "SMC CALLING CONVENTION" link:https://developer.arm.com/docs/den0028/latest[].
+
+If we boot the Linux kernel on QEMU and <<get-device-tree-from-a-running-kernel,dump the auto-generated device tree>>, we observe that it contains the address of the PSCI CPU_ON call:
+
+....
+        psci {
+                method = "hvc";
+                compatible = "arm,psci-0.2", "arm,psci";
+                cpu_on = <0xc4000003>;
+                migrate = <0xc4000005>;
+                cpu_suspend = <0xc4000001>;
+                cpu_off = <0x84000002>;
+        };
+....
+
+The Linux kernel wakes up the secondary cores in this exact same way at: https://github.com/torvalds/linux/blob/v4.19/drivers/firmware/psci.c#L122 We first actually got it working here by grepping the kernel and step debugging that call :-)
+
+In gem5, CPU 1 starts woken up from the start, so PSCI is not needed. TODO gem5 actually blows up if we try to do the `hvc` call, understand why.
+
+Bibliography: https://stackoverflow.com/questions/20055754/arm-start-wakeup-bringup-the-other-cpu-cores-aps-and-pass-execution-start-addre/53473447#53473447
+
+===== DMB
+
+TODO: create and study a minimal examples in gem5 where the `DMB` instruction leads to less cycles: https://stackoverflow.com/questions/15491751/real-life-use-cases-of-barriers-dsb-dmb-isb-in-arm
 
 === How we got some baremetal stuff to work
 
@@ -10921,10 +11146,10 @@ It does not work if you just download the `.zip` with the sources for this repos
 
 === Run command after boot
 
-If you just want to run a command after boot ends without thinking much about it, just use the `--eval-busybox` option, e.g.:
+If you just want to run a command after boot ends without thinking much about it, just use the `--eval-after` option, e.g.:
 
 ....
-./run --eval-busybox 'echo hello'
+./run --eval-after 'echo hello'
 ....
 
 This option passes the command to our init scripts through <<kernel-command-line-parameters>>, and uses a few clever tricks along the way to make it just work.
@@ -11409,7 +11634,7 @@ Those packages get automatically added to Buildroot's `BR2_EXTERNAL`, so all you
 then test it out with:
 
 ....
-./run --eval-busybox '/sample_package.out'
+./run --eval-after '/sample_package.out'
 ....
 
 and you should see:
@@ -11451,7 +11676,7 @@ Usage:
 Then test one of the modules with:
 
 ....
-./run --buildroot-linux --eval-busybox 'modprobe buildroot_hello'
+./run --buildroot-linux --eval-after 'modprobe buildroot_hello'
 ....
 
 Source: link:buildroot_packages/kernel_modules/buildroot_hello.c[]
@@ -11686,7 +11911,7 @@ Sources:
 Print out several parameters that normally change randomly from boot to boot:
 
 ....
-./run --eval-busybox '/rand_check.out;/poweroff.out'
+./run --eval-after '/rand_check.out;/poweroff.out'
 ....
 
 Source: link:userland/rand_check.c[]
