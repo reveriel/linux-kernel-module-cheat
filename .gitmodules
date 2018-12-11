@@ -30,4 +30,4 @@
 
 [submodule "userland/ksm-test"]
 	path = userland/ksm-test
-	url = git@github:reveriel/ksm-test
+	url = git@github.com:reveriel/ksm-test.git
