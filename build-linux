@@ -31,6 +31,13 @@ Still uses options explicitly passed with `--config` and
 '''
         )
         parser.add_argument(
+            '--custom-config-file-gem5', default=False, action='store_true',
+            help='''\
+Use the gem5 Linux kernel fork config as the custom config file.
+Ignore --custom-config-file.
+'''
+        )
+        parser.add_argument(
             '--config-only', default=False, action='store_true',
             help='''\
 Configure the kernel, but don't build it.
@@ -58,7 +65,7 @@ Configure the kernel, but don't build it.
         gcc = common.get_toolchain_tool(tool)
         prefix = gcc[:-len(tool)]
         common_args = {
-            'cwd': common.linux_src_dir,
+            'cwd': common.linux_source_dir,
         }
         ccache = shutil.which('ccache')
         if ccache is not None:
@@ -77,10 +84,14 @@ Configure the kernel, but don't build it.
             'CC={}'.format(cc), common.Newline,
             'O={}'.format(build_dir), common.Newline,
         ] + verbose
-        if args.custom_config_file is not None:
-            if not os.path.exists(args.custom_config_file):
+        if args.custom_config_file_gem5:
+            custom_config_file = os.path.join(common.linux_source_dir, 'arch', common.linux_arch, 'configs', 'gem5_defconfig')
+        else:
+            custom_config_file = args.custom_config_file
+        if custom_config_file is not None:
+            if not os.path.exists(custom_config_file):
                 raise Exception('config fragment file does not exist: {}'.format(args.custom_config_file))
-            base_config_file = args.custom_config_file
+            base_config_file = custom_config_file
             config_fragments = []
         else:
             base_config_file = os.path.join(common.linux_config_dir, 'buildroot-{}'.format(args.arch))
@@ -99,7 +110,7 @@ Configure the kernel, but don't build it.
         )
         common.run_cmd(
             [
-                os.path.join(common.linux_src_dir, 'scripts', 'kconfig', 'merge_config.sh'), common.Newline,
+                os.path.join(common.linux_source_dir, 'scripts', 'kconfig', 'merge_config.sh'), common.Newline,
                 '-m', common.Newline,
                 '-O', build_dir, common.Newline,
                 os.path.join(build_dir, '.config'), common.Newline,
@@ -119,6 +130,12 @@ Configure the kernel, but don't build it.
                     common_make_args +
                     common.add_newlines(args.extra_make_args)
                 ),
+                extra_env={
+                    'KBUILD_BUILD_VERSION': '1',
+                    'KBUILD_BUILD_TIMESTAMP': 'Thu Jan  1 00:00:00 UTC 1970',
+                    'KBUILD_BUILD_USER': 'lkmc',
+                    'KBUILD_BUILD_HOST': common.git_sha(common.linux_source_dir),
+                },
                 **common_args
             )
             common.run_cmd(

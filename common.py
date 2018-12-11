@@ -48,10 +48,8 @@ submodules_dir = os.path.join(root_dir, 'submodules')
 buildroot_src_dir = os.path.join(submodules_dir, 'buildroot')
 crosstool_ng_src_dir = os.path.join(submodules_dir, 'crosstool-ng')
 crosstool_ng_supported_archs = set(['arm', 'aarch64'])
-linux_src_dir = os.path.join(submodules_dir, 'linux')
 linux_config_dir = os.path.join(common.root_dir, 'linux_config')
 rootfs_overlay_dir = os.path.join(common.root_dir, 'rootfs_overlay')
-extract_vmlinux = os.path.join(linux_src_dir, 'scripts', 'extract-vmlinux')
 qemu_src_dir = os.path.join(submodules_dir, 'qemu')
 parsec_benchmark_src_dir = os.path.join(submodules_dir, 'parsec-benchmark')
 ccache_dir = os.path.join('/usr', 'lib', 'ccache')
@@ -68,7 +66,9 @@ for key in common.arch_short_to_long_dict:
     arch_choices.append(common.arch_short_to_long_dict[key])
 default_arch = 'x86_64'
 gem5_cpt_prefix = '^cpt\.'
-sha = subprocess.check_output(['git', '-C', root_dir, 'log', '-1', '--format=%H']).decode().rstrip()
+def git_sha(repo_path):
+    return subprocess.check_output(['git', '-C', repo_path, 'log', '-1', '--format=%H']).decode().rstrip()
+sha = common.git_sha(root_dir)
 release_dir = os.path.join(common.out_dir, 'release')
 release_zip_file = os.path.join(common.release_dir, 'lkmc-{}.zip'.format(common.sha))
 github_repo_id = 'cirosantilli/linux-kernel-module-cheat'
@@ -306,8 +306,21 @@ Use the docker download Ubuntu root filesystem instead of the default Buildroot 
 '''
     )
     parser.add_argument(
+        '--dp650', default=False, action='store_true'
+    )
+    parser.add_argument(
         '-L', '--linux-build-id', default=default_build_id,
         help='Linux build ID. Allows you to keep multiple separate Linux builds. Default: %(default)s'
+    )
+    parser.add_argument(
+        '--linux-build-dir',
+        help='Select the directory that contains the Linux kernel build. Overrides linux-build-id.'
+    )
+    parser.add_argument(
+        '--linux-source-dir',
+        help='''\
+Use the given directory as the Linux source tree.
+'''
     )
     parser.add_argument(
         '--machine',
@@ -737,12 +750,6 @@ def setup(parser):
         common.buildroot_toolchain_prefix = 'arm-buildroot-linux-uclibcgnueabihf'
         common.crosstool_ng_toolchain_prefix = 'arm-unknown-eabi'
         common.ubuntu_toolchain_prefix = 'arm-linux-gnueabihf'
-        if common.emulator == 'gem5':
-            if common.machine is None:
-                common.machine = 'VExpress_GEM5_V1'
-        else:
-            if common.machine is None:
-                common.machine = 'virt'
         common.is_arm = True
     elif args.arch == 'aarch64':
         common.armv = 8
@@ -751,12 +758,6 @@ def setup(parser):
         common.buildroot_toolchain_prefix = 'aarch64-buildroot-linux-uclibc'
         common.crosstool_ng_toolchain_prefix = 'aarch64-unknown-elf'
         common.ubuntu_toolchain_prefix = 'aarch64-linux-gnu'
-        if common.emulator == 'gem5':
-            if common.machine is None:
-                common.machine = 'VExpress_GEM5_V1'
-        else:
-            if common.machine is None:
-                common.machine = 'virt'
         common.is_arm = True
     elif args.arch == 'x86_64':
         common.crosstool_ng_toolchain_prefix = 'x86_64-unknown-elf'
@@ -769,6 +770,16 @@ def setup(parser):
         else:
             if common.machine is None:
                 common.machine = 'pc'
+    if is_arm:
+        if common.emulator == 'gem5':
+            if common.machine is None:
+                if args.dp650:
+                    common.machine = 'VExpress_GEM5_V1_DPU'
+                else:
+                    common.machine = 'VExpress_GEM5_V1'
+        else:
+            if common.machine is None:
+                common.machine = 'virt'
     common.buildroot_out_dir = os.path.join(common.out_dir, 'buildroot')
     common.buildroot_build_dir = os.path.join(common.buildroot_out_dir, 'build', args.buildroot_build_id, args.arch)
     common.buildroot_download_dir = os.path.join(common.buildroot_out_dir, 'download')
@@ -854,9 +865,17 @@ def setup(parser):
     common.run_cmd_file = os.path.join(common.run_dir, 'run.sh')
 
     # Linux
+    if args.linux_source_dir is None:
+        common.linux_source_dir = os.path.join(submodules_dir, 'linux')
+    else:
+        common.linux_source_dir = args.linux_source_dir
+    common.extract_vmlinux = os.path.join(linux_source_dir, 'scripts', 'extract-vmlinux')
     common.linux_buildroot_build_dir = os.path.join(common.buildroot_build_build_dir, 'linux-custom')
-    common.linux_build_dir = os.path.join(common.out_dir, 'linux', args.linux_build_id, args.arch)
-    common.lkmc_vmlinux = os.path.join(common.linux_build_dir, "vmlinux")
+    if args.linux_build_dir is None:
+        common.linux_build_dir = os.path.join(common.out_dir, 'linux', args.linux_build_id, args.arch)
+    else:
+        common.linux_build_dir = args.linux_build_dir
+    common.lkmc_vmlinux = os.path.join(common.linux_build_dir, 'vmlinux')
     if args.arch == 'arm':
         common.linux_arch = 'arm'
         common.linux_image_prefix = os.path.join('arch', common.linux_arch, 'boot', 'zImage')

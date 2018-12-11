@@ -561,7 +561,7 @@ To modify the Linux kernel, build and use it as usual:
 For gem5, do:
 
 ....
-git submodule update --init --depth 1 "$(./getvar linux_src_dir)"
+git submodule update --init --depth 1 "$(./getvar linux_source_dir)"
 sudo apt-get install qemu-utils
 ./build-gem5
 ./run --gem5 --prebuilt
@@ -1704,7 +1704,7 @@ Bibliography:
 
 We source the Linux kernel GDB scripts by default for `lx-symbols`, but they also contains some other goodies worth looking into.
 
-Those scripts basically parse some in-kernel datastructures to offer greater visibility with GDB.
+Those scripts basically parse some in-kernel data structures to offer greater visibility with GDB.
 
 All defined commands are prefixed by `lx-`, so to get a full list just try to tab complete that.
 
@@ -3480,7 +3480,7 @@ But https://github.com/qemu/qemu/blob/v2.12.0/docs/config/mach-virt-graphical.cf
 
 so maybe it is not possible?
 
-=== gem5 Graphic mode
+=== gem5 graphic mode
 
 gem5 does not have a "text mode", since it cannot redirect the Linux terminal to same host terminal where the executable is running: you are always forced to connect to the terminal with `gem-shell`.
 
@@ -3488,16 +3488,14 @@ TODO could not get it working on `x86_64`, only ARM.
 
 Overview: https://stackoverflow.com/questions/50364863/how-to-get-graphical-gui-output-and-user-touch-keyboard-mouse-input-in-a-ful/50364864#50364864
 
-More concretely:
+More concretely, first build the kernel with the <<gem5-arm-linux-kernel-patches>>, and then run:
 
 ....
-git -C "$(./getvar linux_src_dir)" checkout gem5/v4.15
 ./build-linux \
   --arch arm \
-  --custom-config-file "$(./getvar linux_src_dir)/arch/arm/configs/gem5_defconfig" \
+  --custom-config-file-gem5 \
   --linux-build-id gem5-v4.15 \
 ;
-git -C "$(./getvar linux_src_dir)" checkout -
 ./run --arch arm --gem5 --linux-build-id gem5-v4.15
 ....
 
@@ -3531,7 +3529,7 @@ and when we connect it shows a message:
 info: VNC client attached
 ....
 
-Alternatively, you can also view the frames with `--frame-capture`:
+Alternatively, you can also dump each new frame to an image file with `--frame-capture`:
 
 ....
 ./run \
@@ -3542,9 +3540,15 @@ Alternatively, you can also view the frames with `--frame-capture`:
 ;
 ....
 
-This option dumps one compressed PNG whenever the screen image changes inside `m5out`, indexed by the cycle ID. This allows for more controlled experiments.
+This creates on compressed PNG whenever the screen image changes inside the <<m5out-directory>> with filename of type:
 
-It is fun to see how we get one new frame whenever the white underscore cursor appears and reappears under the penguin.
+....
+frames_system.vncserver/fb.<frame-index>.<timestamp>.png.gz
+....
+
+It is fun to see how we get one new frame whenever the white underscore cursor appears and reappears under the penguin!
+
+The last frame is always available uncompressed at: `system.framebuffer.png`.
 
 TODO <<kmscube>> failed on `aarch64` with:
 
@@ -3559,18 +3563,33 @@ Tested on: link:http://github.com/cirosantilli/linux-kernel-module-cheat/commit/
 For `aarch64` we also need to configure the kernel with link:linux_config/display[]:
 
 ....
-git -C "$(./getvar linux_src_dir)" checkout gem5/v4.15
+git -C "$(./getvar linux_source_dir)" fetch https://gem5.googlesource.com/arm/linux gem5/v4.15:gem5/v4.15
+git -C "$(./getvar linux_source_dir)" checkout gem5/v4.15
 ./build-linux \
   --arch aarch64 \
   --config-fragment linux_config/display \
-  --custom-config-file "$(./getvar linux_src_dir)/arch/arm64/configs/gem5_defconfig" \
+  --custom-config-file-gem5 \
   --linux-build-id gem5-v4.15 \
 ;
-git -C "$(./getvar linux_src_dir)" checkout -
+git -C "$(./getvar linux_source_dir)" checkout -
 ./run --arch aarch64 --gem5 --linux-build-id gem5-v4.15
 ....
 
 This is because the gem5 `aarch64` defconfig does not enable HDLCD like the 32 bit one `arm` one for some reason.
+
+==== gem5 graphic mode DP650
+
+TODO get working. There is an unmerged patchset at: https://gem5-review.googlesource.com/c/public/gem5/+/11036/1
+
+The DP650 is a newer display hardware than HDLCD. TODO is its interface publicly documented anywhere? Since it has a gem5 model and link:https://github.com/torvalds/linux/blob/v4.19/drivers/gpu/drm/arm/Kconfig#L39[in-tree Linux kernel support], that information cannot be secret?
+
+The key option to enable support in Linux is `DRM_MALI_DISPLAY=y` which we enable at link:linux_config/display[].
+
+Build the kernel exactly as for <<graphic-mode-gem5-aarch64>> and then run with:
+
+....
+./run --arch aarch64 --dp650 --gem5 --linux-build-id gem5-v4.15
+....
 
 ==== Graphic mode gem5 internals
 
@@ -4091,8 +4110,8 @@ That file contains `BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="board/qemu/x86_64/linux
 
 Other configs which we had previously tested at 4e0d9af81fcce2ce4e777cb82a1990d7c2ca7c1e are:
 
-* `arm` and `aarch64` configs present in the official ARM gem5 Linux kernel fork: https://gem5.googlesource.com/arm/linux, e.g. for arm v4.9: link:https://gem5.googlesource.com/arm/linux/+/917e007a4150d26a0aa95e4f5353ba72753669c7/arch/arm/configs/gem5_defconfig[]. The patches there are just simple optimizations and instrumentation, but they are not needed to boot.
-* Jason's magic `x86_64` config: http://web.archive.org/web/20171229121642/http://www.lowepower.com/jason/files/config which is referenced at: link:http://web.archive.org/web/20171229121525/http://www.lowepower.com/jason/setting-up-gem5-full-system.html[]. QEMU boots with that by removing `# CONFIG_VIRTIO_PCI is not set`
+* `arm` and `aarch64` configs present in the official ARM gem5 Linux kernel fork: <<gem5-arm-linux-kernel-patches>>. Some of the configs present there are added by the patches.
+* Jason's magic `x86_64` config: http://web.archive.org/web/20171229121642/http://www.lowepower.com/jason/files/config which is referenced at: link:http://web.archive.org/web/20171229121525/http://www.lowepower.com/jason/setting-up-gem5-full-system.html[]. QEMU boots with that by removing `# CONFIG_VIRTIO_PCI is not set`.
 
 === Kernel version
 
@@ -4109,7 +4128,7 @@ cat /proc/version
 or in the source:
 
 ....
-cd "$(./getvar linux_src_dir)"
+cd "$(./getvar linux_source_dir)"
 git log | grep -E '    Linux [0-9]+\.' | head
 ....
 
@@ -5263,6 +5282,26 @@ Sources:
 * link:rootfs_overlay/procfs.sh[]
 
 Bibliography: https://stackoverflow.com/questions/8516021/proc-create-example-for-kernel-module/18924359#18924359
+
+===== /proc/version
+
+Its data is shared with `uname()`, which is a POSIX C function and has a Linux syscall to back it up.
+
+Where the data comes from and how to modify it:
+
+* https://unix.stackexchange.com/questions/136959/where-does-uname-get-its-information-from/485962#485962
+* https://stackoverflow.com/questions/23424174/how-to-customize-or-remove-extra-linux-kernel-version-details-shown-at-boot
+
+In this repo, leaking host information, and to make builds more reproducible, we are setting:
+
+- user and date to dummy values
+- hostname to the kernel git commit
+
+So the file contains something like:
+
+....
+Linux version 4.19.0-dirty (lkmc@84df9525b0c27f3ebc2ebb1864fa62a97fdedb7d) (gcc version 6.4.0 (Buildroot 2018.05-00002-gbc60382b8f)) #1 SMP Thu Jan 1 00:00:00 UTC 1970
+....
 
 ==== sysfs
 
@@ -8351,7 +8390,7 @@ TODO do even more awesome offline post-mortem analysis things, such as:
 
 ==== QEMU record and replay
 
-QEMU runs are not deterministic by default, however it does support a record and replay mechanism that allows you to replay a previous run deterministically:
+QEMU runs, unlike gem5, are not deterministic by default, however it does support a record and replay mechanism that allows you to replay a previous run deterministically.
 
 This awesome feature allows you to examine a single run as many times as you would like until you understand everything:
 
@@ -8410,8 +8449,8 @@ TODO `arm` and `aarch64` only seem to work with initrd since I cannot plug a wor
 Then, when I tried with <<initrd>> and no disk:
 
 ....
-./build-buildroot --arch aarch64 -i
-./qemu-rr --arch aarch64 --eval-after '/rand_check.out;/poweroff.out;' -i
+./build-buildroot --arch aarch64 --initrd
+./qemu-rr --arch aarch64 --eval-after '/rand_check.out;/poweroff.out;' --initrd
 ....
 
 QEMU crashes with:
@@ -8466,14 +8505,20 @@ just appears to output both cores intertwined without any clear differentiation.
 
 ==== gem5 tracing
 
-gem5 unlike QEMU is deterministic by default without needing to replay traces
-
-But it also provides a tracing mechanism documented at: link:http://www.gem5.org/Trace_Based_Debugging[] to allow easily inspecting certain aspects of the system:
+gem5 provides also provides a tracing mechanism documented at: link:http://www.gem5.org/Trace_Based_Debugging[]:
 
 ....
 ./run --arch aarch64 --eval 'm5 exit' --gem5 --trace Exec
 less "$(./getvar --arch aarch64 run_dir)/trace.txt"
 ....
+
+Output the trace to stdout instead of a file:
+
+....
+./run --arch aarch64 --eval 'm5 exit' --gem5 --trace Exec --trace-stdout
+....
+
+This would produce a lot of output however, so you will likely not want that when tracing a Linux kernel boot instructions. But it can be very convenient for smaller traces.
 
 List all available debug flags:
 
@@ -8487,6 +8532,8 @@ but to understand most of them you have to look at the source code:
 less "$(./getvar gem5_src_dir)/src/cpu/SConscript"
 less "$(./getvar gem5_src_dir)/src/cpu/exetrace.cc"
 ....
+
+The traces are generated from `DPRINTF(<trace-id>` calls scattered throughout the code.
 
 As can be seen on the `Sconstruct`, `Exec` is just an alias that enables a set of flags.
 
@@ -8690,6 +8737,19 @@ getconf _NPROCESSORS_CONF
 ====== gem5 arm more than 8 cores
 
 https://stackoverflow.com/questions/50248067/how-to-run-a-gem5-arm-aarch64-full-system-simulation-with-fs-py-with-more-than-8
+
+Build the kernel with the <<gem5-arm-linux-kernel-patches>>, and then run:
+
+....
+./run \
+  --arch aarch64 \
+  --linux-build-id gem5-v4.15 \
+  --gem5 \
+  --cpus 16 \
+  -- \
+  --param 'system.realview.gic.gem5_extensions = True' \
+;
+....
 
 ===== gem5 cache size
 
@@ -9029,7 +9089,7 @@ Running a benchmark of a size different than `test`, e.g. `simsmall`, requires a
   --arch arm \
   --config 'BR2_PACKAGE_PARSEC_BENCHMARK=y' \
   --config 'BR2_PACKAGE_PARSEC_BENCHMARK_INPUT_SIZE="simsmall"' \
-  -- parsec-benchmark-reconfigure \
+  -- parsec_benchmark-reconfigure \
 ;
 ....
 
@@ -9087,7 +9147,7 @@ If you still want to run this, try it out with:
   --config 'BR2_PACKAGE_PARSEC_BENCHMARK=y' \
   --config 'BR2_PACKAGE_PARSEC_BENCHMARK_PARSECMGMT=y' \
   --config 'BR2_TARGET_ROOTFS_EXT2_SIZE="3G"' \
-  -- parsec-benchmark-reconfigure \
+  -- parsec_benchmark-reconfigure \
 ;
 ....
 
@@ -9141,7 +9201,7 @@ Don't forget to explicitly rebuild PARSEC with:
 ./build-buildroot \
   --arch arm \
   --config 'BR2_PACKAGE_PARSEC_BENCHMARK=y' \
-  -- parsec-benchmark-reconfigure \
+  -- parsec_benchmark-reconfigure \
 ;
 ....
 +
@@ -9323,7 +9383,7 @@ since boot has already happened, and the parameters are already in the RAM of th
 Checkpoints are stored inside the <<m5out-directory>> at:
 
 ....
-"$(./getvar --gem5 run_dir)/m5out/cpt.<checkpoint-time>"
+"$(./getvar --gem5 m5out_dir)/cpt.<checkpoint-time>"
 ....
 
 where `<checkpoint-time>` is the cycle number at which the checkpoint was taken.
@@ -9713,14 +9773,31 @@ What they mean: https://stackoverflow.com/questions/50583962/what-are-the-gem5-a
 
 === gem5 arm Linux kernel patches
 
-https://gem5.googlesource.com/arm/linux/ contains an ARM Linux kernel fork with a few gem5 specific Linux kernel patches on top of mainline created by ARM Holdings.
+https://gem5.googlesource.com/arm/linux/ contains an ARM Linux kernel forks with a few gem5 specific Linux kernel patches on top of mainline created by ARM Holdings on top of a few upstream kernel releases.
 
-Those patches look interesting, but it is obviously not possible to understand what they actually do from their commit message.
+The patches are optional: the vanilla kernel does boot. But they add some interesting gem5-specific optimizations, instrumentations and device support.
 
-So let's explain them one by one here as we understand them:
+The patches also <<notable-alternate-gem5-kernel-configs,add defconfigs>> that are known to work well with gem5.
+
+E.g. for arm v4.9 there is: link:https://gem5.googlesource.com/arm/linux/+/917e007a4150d26a0aa95e4f5353ba72753669c7/arch/arm/configs/gem5_defconfig[].
+
+In order to use those patches and their associated configs, and, we recommend using <<linux-kernel-build-variants>> as:
+
+....
+git -C "$(./getvar linux_source_dir)" fetch https://gem5.googlesource.com/arm/linux gem5/v4.15:gem5/v4.15
+git -C "$(./getvar linux_source_dir)" checkout gem5/v4.15
+./build-linux \
+  --arch aarch64 \
+  --custom-config-file-gem5 \
+  --linux-build-id gem5-v4.15 \
+;
+git -C "$(./getvar linux_source_dir)" checkout -
+....
+
+It is obviously not possible to understand what they actually do from their commit message, so let's explain them one by one here as we understand them:
 
 * `drm: Add component-aware simple encoder` allows you to see images through VNC: <<gem5-graphic-mode>>
-* `gem5: Add support for gem5's extended GIC mode` adds support for more than 8 cores: https://stackoverflow.com/questions/50248067/how-to-run-a-gem5-arm-aarch64-full-system-simulation-with-fs-py-with-more-than-8/50248068#5024806
+* `gem5: Add support for gem5's extended GIC mode` adds support for more than 8 cores: <<gem5-arm-more-than-8-cores>>
 
 === m5out directory
 
@@ -11377,12 +11454,12 @@ If you want to keep two builds around, one for the latest Linux version, and the
 ./build-linux
 
 # Build another branch.
-git -C "$(./getvar linux_src_dir)" fetch --tags --unshallow
-git -C "$(./getvar linux_src_dir)" checkout v4.16
+git -C "$(./getvar linux_source_dir)" fetch --tags --unshallow
+git -C "$(./getvar linux_source_dir)" checkout v4.16
 ./build-linux --linux-build-id v4.16
 
 # Restore master.
-git -C "$(./getvar linux_src_dir)" checkout -
+git -C "$(./getvar linux_source_dir)" checkout -
 
 # Run master.
 ./run
@@ -11779,13 +11856,18 @@ We have some link:https://github.com/pexpect/pexpect[pexpect] automated tests fo
 ./test-gdb
 ....
 
+Sources:
+
+* link:build-test-gdb[]
+* link:test-gdb[]
+
 Not all of them  are passing right now due to: <<gem5-gdb-step-debug-kernel-aarch64>>.
 
 If something goes wrong, re-run the test commands manually and use `--verbose` to understand what happened:
 
 ....
 ./run --arch arm --background --baremetal add --wait-gdb &
-./run-gdb --arch arm --baremetal add --test --verbose
+./run-gdb --arch arm --baremetal add --verbose -- main
 ....
 
 and possibly repeat the GDB steps manually with the usual:
@@ -11794,10 +11876,19 @@ and possibly repeat the GDB steps manually with the usual:
 ./run-gdb --arch arm --baremetal add --no-continue --verbose
 ....
 
-Sources:
+To debug GDB problems on gem5, you might want to enable the following <<gem5-tracing,tracing>> options:
 
-* link:build-test-gdb[]
-* link:test-gdb[]
+....
+./run \
+  --arch arm \
+  --baremetal add \
+  --wait-gdb \
+  --trace GDBRecv,GDBSend \
+  --trace-stdout \
+;
+....
+
+====== Test GDB Linux kernel
 
 For the Linux kernel, do the following manual tests for now.
 
@@ -11869,7 +11960,7 @@ This example is based on the Linux kernel, for which we used to have patches, bu
 # Last point before out patches.
 last_mainline_revision=v4.15
 next_mainline_revision=v4.16
-cd "$(./getvar linux_src_dir)"
+cd "$(./getvar linux_source_dir)"
 
 # Create a branch before the rebase in case things go wrong.
 git checkout -b "lkmc-${last_mainline_revision}"
